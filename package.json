@@ -1,0 +1,33 @@
+{
+    "name": "platform-aspirasi",
+    "private": true,
+    "workspaces": [
+      "apps/*",
+      "packages/*"
+    ],
+    "scripts": {
+      "dev": "turbo run dev",
+      "build": "turbo run build",
+      "test": "turbo run test",
+      "lint": "turbo run lint",
+      "type-check": "turbo run type-check",
+      "clean": "turbo run clean",
+      "docker:dev": "docker-compose -f infrastructure/docker/docker-compose.dev.yml up -d",
+      "docker:down": "docker-compose -f infrastructure/docker/docker-compose.dev.yml down",
+      "setup": "./scripts/setup.sh",
+      "migrate": "./scripts/migrate.sh",
+      "seed": "./scripts/seed.sh"
+    },
+    "devDependencies": {
+      "turbo": "^1.10.0",
+      "@typescript-eslint/eslint-plugin": "^6.0.0",
+      "@typescript-eslint/parser": "^6.0.0",
+      "eslint": "^8.0.0",
+      "prettier": "^3.0.0",
+      "typescript": "^5.0.0"
+    },
+    "engines": {
+      "node": ">=18.0.0",
+      "npm": ">=8.0.0"
+    }
+  }
