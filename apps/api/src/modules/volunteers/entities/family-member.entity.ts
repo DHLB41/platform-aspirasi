@@ -8,51 +8,31 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Volunteer } from './volunteer.entity';
-
-export enum Gender {
-    MALE = 'male',
-    FEMALE = 'female',
-}
-
-export enum RelationshipType {
-    SPOUSE = 'spouse',              // Suami/Istri
-    CHILD = 'child',                // Anak
-    PARENT = 'parent',              // Orang Tua
-    SIBLING = 'sibling',            // Saudara
-    GRANDPARENT = 'grandparent',    // Kakek/Nenek
-    GRANDCHILD = 'grandchild',      // Cucu
-    UNCLE_AUNT = 'uncle_aunt',      // Paman/Bibi
-    COUSIN = 'cousin',              // Sepupu
-    NEPHEW_NIECE = 'nephew_niece',  // Keponakan
-    OTHER = 'other',                // Lainnya
-}
-
-export enum FamilyMemberStatus {
-    ACTIVE = 'active',
-    DECEASED = 'deceased',
-    SEPARATED = 'separated',
-}
+import { 
+    Gender, 
+    RelationshipType, 
+    FamilyMemberStatus 
+} from '../../../common/types/volunteer.types';
 
 @Entity('family_members')
 @Index(['volunteerId'])
 @Index(['relationship'])
+@Index(['status'])
 export class FamilyMember extends BaseEntity {
     @ApiProperty({ description: 'Volunteer ID' })
     @Column({ name: 'volunteer_id' })
     volunteerId: string;
 
-    @ApiProperty({ description: 'Full name' })
+    @ApiProperty({ description: 'Family member name' })
     @Column({ length: 100 })
     name: string;
 
-    @ApiProperty({ description: 'NIK (if applicable)' })
+    @ApiProperty({ description: 'NIK (Nomor Induk Kependudukan)' })
     @Column({ length: 16, nullable: true })
-    @Index()
     nik?: string;
 
     @ApiProperty({ enum: RelationshipType, description: 'Relationship to volunteer' })
     @Column({ type: 'enum', enum: RelationshipType })
-    @Index()
     relationship: RelationshipType;
 
     @ApiProperty({ enum: Gender, description: 'Gender' })
@@ -83,19 +63,15 @@ export class FamilyMember extends BaseEntity {
     @Column({ length: 50, nullable: true })
     education?: string;
 
-    @ApiProperty({ description: 'Address (if different from volunteer)' })
+    @ApiProperty({ description: 'Address' })
     @Column({ type: 'text', nullable: true })
     address?: string;
 
     @ApiProperty({ enum: FamilyMemberStatus, description: 'Status' })
-    @Column({ 
-        type: 'enum', 
-        enum: FamilyMemberStatus, 
-        default: FamilyMemberStatus.ACTIVE 
-    })
+    @Column({ type: 'enum', enum: FamilyMemberStatus, default: FamilyMemberStatus.ACTIVE })
     status: FamilyMemberStatus;
 
-    @ApiProperty({ description: 'Is dependent (for KTA purposes)' })
+    @ApiProperty({ description: 'Is financial dependent' })
     @Column({ type: 'boolean', name: 'is_dependent', default: false })
     isDependent: boolean;
 
@@ -107,7 +83,7 @@ export class FamilyMember extends BaseEntity {
     @Column({ type: 'text', nullable: true })
     notes?: string;
 
-    @ApiProperty({ description: 'Order for display/KTA' })
+    @ApiProperty({ description: 'Display order' })
     @Column({ type: 'integer', name: 'display_order', default: 0 })
     displayOrder: number;
 
@@ -118,27 +94,7 @@ export class FamilyMember extends BaseEntity {
     @JoinColumn({ name: 'volunteer_id' })
     volunteer: Volunteer;
 
-    // Computed properties
-    get age(): number {
-        if (!this.birthDate) {
-          return 0;
-        }
-        const today = new Date();
-        const birth = new Date(this.birthDate);
-        let age = today.getFullYear() - birth.getFullYear();
-        const monthDiff = today.getMonth() - birth.getMonth();
-        
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-            age--;
-        }
-        
-        return age;
-    }
-
-    get isMinor(): boolean {
-        return this.age < 17; // Indonesian legal age
-    }
-
+    // Helper properties
     get isChild(): boolean {
         return this.relationship === RelationshipType.CHILD;
     }
@@ -147,17 +103,36 @@ export class FamilyMember extends BaseEntity {
         return this.relationship === RelationshipType.SPOUSE;
     }
 
-    // Helper methods
-    isActive(): boolean {
-        return this.status === FamilyMemberStatus.ACTIVE;
+    get age(): number | null {
+        if (!this.birthDate) return null;
+        const today = new Date();
+        const birthDate = new Date(this.birthDate);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+        }
+        
+        return age;
     }
 
-    isEligibleForKTA(): boolean {
-        return this.isActive() && (this.isSpouse || (this.isChild && this.isMinor));
+    get isMinor(): boolean {
+        const age = this.age;
+        return age !== null && age < 17;
     }
 
-    canBeEmergencyContact(): boolean {
-        return this.isActive() && !this.isMinor && !!this.phone;
+    get isAdult(): boolean {
+        const age = this.age;
+        return age !== null && age >= 17;
+    }
+
+    hasCompleteContactInfo(): boolean {
+        return !!(this.email || this.phone);
+    }
+
+    hasIncompleteContactInfo(): boolean {
+        return !this.phone;
     }
 
     getRelationshipLabel(): string {
@@ -190,7 +165,6 @@ export class FamilyMember extends BaseEntity {
     }
 
     updateDependentStatus(): void {
-        // Auto-update dependent status based on relationship and age
         if (this.isChild && this.isMinor) {
             this.isDependent = true;
         } else if (this.relationship === RelationshipType.SPOUSE && this.occupation === 'Ibu Rumah Tangga') {

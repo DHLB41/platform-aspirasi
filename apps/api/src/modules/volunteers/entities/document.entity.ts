@@ -10,31 +10,14 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 import { Volunteer } from './volunteer.entity';
 import { MediaAsset } from '../../media/entities/media-asset.entity';
 import { User } from '../../../auth/entities/user.entity';
-
-export enum DocumentType {
-    KTP = 'ktp',                    // Kartu Tanda Penduduk
-    KK = 'kk',                      // Kartu Keluarga
-    PHOTO = 'photo',                // Pas Foto
-    IJAZAH = 'ijazah',             // Ijazah Terakhir
-    SERTIFIKAT = 'sertifikat',     // Sertifikat Keahlian
-    SURAT_SEHAT = 'surat_sehat',   // Surat Keterangan Sehat
-    SKCK = 'skck',                 // Surat Keterangan Catatan Kepolisian
-    CV = 'cv',                     // Curriculum Vitae
-    SURAT_PERNYATAAN = 'surat_pernyataan', // Surat Pernyataan
-    OTHER = 'other',               // Dokumen Lainnya
-}
-
-export enum DocumentStatus {
-    UPLOADED = 'uploaded',
-    PENDING_REVIEW = 'pending_review',
-    APPROVED = 'approved',
-    REJECTED = 'rejected',
-    EXPIRED = 'expired',
-}
+import { 
+    DocumentType, 
+    DocumentStatus 
+} from '../../../common/types/volunteer.types';
 
 @Entity('documents')
-@Index(['volunteer_id'])
-@Index(['document_type'])
+@Index(['volunteerId'])
+@Index(['documentType'])
 @Index(['status'])
 export class Document extends BaseEntity {
     @ApiProperty({ description: 'Volunteer ID' })
@@ -47,7 +30,6 @@ export class Document extends BaseEntity {
 
     @ApiProperty({ enum: DocumentType, description: 'Document type' })
     @Column({ type: 'enum', enum: DocumentType, name: 'document_type' })
-    @Index()
     documentType: DocumentType;
 
     @ApiProperty({ description: 'Document title/name' })
@@ -64,7 +46,6 @@ export class Document extends BaseEntity {
         enum: DocumentStatus, 
         default: DocumentStatus.UPLOADED 
     })
-    @Index()
     status: DocumentStatus;
 
     @ApiProperty({ description: 'Document number (KTP number, etc.)' })
@@ -158,58 +139,19 @@ export class Document extends BaseEntity {
         this.reviewNotes = notes;
     }
 
-    reject(reviewerId: string, reason: string): void {
+    reject(reviewerId: string, notes: string): void {
         this.status = DocumentStatus.REJECTED;
         this.reviewedBy = reviewerId;
         this.reviewedAt = new Date();
-        this.reviewNotes = reason;
-    }
-
-    getTypeLabel(): string {
-        const labels = {
-            [DocumentType.KTP]: 'Kartu Tanda Penduduk',
-            [DocumentType.KK]: 'Kartu Keluarga',
-            [DocumentType.PHOTO]: 'Pas Foto',
-            [DocumentType.IJAZAH]: 'Ijazah Terakhir',
-            [DocumentType.SERTIFIKAT]: 'Sertifikat Keahlian',
-            [DocumentType.SURAT_SEHAT]: 'Surat Keterangan Sehat',
-            [DocumentType.SKCK]: 'Surat Keterangan Catatan Kepolisian',
-            [DocumentType.CV]: 'Curriculum Vitae',
-            [DocumentType.SURAT_PERNYATAAN]: 'Surat Pernyataan',
-            [DocumentType.OTHER]: 'Dokumen Lainnya',
-        };
-        return labels[this.documentType] || this.documentType;
-    }
-
-    getStatusLabel(): string {
-        const labels = {
-            [DocumentStatus.UPLOADED]: 'Diunggah',
-            [DocumentStatus.PENDING_REVIEW]: 'Menunggu Review',
-            [DocumentStatus.APPROVED]: 'Disetujui',
-            [DocumentStatus.REJECTED]: 'Ditolak',
-            [DocumentStatus.EXPIRED]: 'Kedaluwarsa',
-        };
-        return labels[this.status] || this.status;
-    }
-
-    getStatusColor(): string {
-        const colors = {
-            [DocumentStatus.UPLOADED]: 'blue',
-            [DocumentStatus.PENDING_REVIEW]: 'yellow',
-            [DocumentStatus.APPROVED]: 'green',
-            [DocumentStatus.REJECTED]: 'red',
-            [DocumentStatus.EXPIRED]: 'gray',
-        };
-        return colors[this.status] || 'gray';
+        this.reviewNotes = notes;
     }
 
     getDaysUntilExpiry(): number | null {
         if (!this.expiryDate) {
-          return null;
+            return null;
         }
-        const today = new Date();
-        const expiry = new Date(this.expiryDate);
-        const diffTime = expiry.getTime() - today.getTime();
+        const now = new Date();
+        const diffTime = this.expiryDate.getTime() - now.getTime();
         return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 

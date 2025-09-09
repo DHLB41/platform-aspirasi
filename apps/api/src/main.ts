@@ -23,15 +23,27 @@ async function bootstrap() {
   // Compression middleware
   app.use(compression());
   
-  // CORS configuration
+  // CORS configuration - FIXED
   app.enableCors({
     origin: [
       configService.get('FRONTEND_URL') || 'http://localhost:3000',
-      'http://localhost:3000'
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: [
+      'Content-Type', 
+      'Authorization', 
+      'X-Requested-With',
+      'Accept',
+      'Origin',
+      'Access-Control-Request-Method',
+      'Access-Control-Request-Headers'
+    ],
+    exposedHeaders: ['Authorization'],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   });
 
   // Global pipes for validation

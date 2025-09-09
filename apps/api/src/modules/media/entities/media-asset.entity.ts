@@ -24,8 +24,8 @@ export enum MediaStatus {
 }
 
 @Entity('media_assets')
-@Index(['owner_id'])
-@Index(['mime_type'])
+@Index(['ownerId'])
+@Index(['mimeType']) // Fixed: use property name, not column name
 @Index(['status'])
 export class MediaAsset extends BaseEntity {
     @ApiProperty({ description: 'Owner user ID' })
@@ -47,7 +47,6 @@ export class MediaAsset extends BaseEntity {
 
     @ApiProperty({ description: 'MIME type' })
     @Column({ length: 100, name: 'mime_type' })
-    @Index()
     mimeType: string;
 
     @ApiProperty({ description: 'File size in bytes' })
@@ -65,7 +64,6 @@ export class MediaAsset extends BaseEntity {
 
     @ApiProperty({ enum: MediaStatus, description: 'Processing status' })
     @Column({ type: 'enum', enum: MediaStatus, default: MediaStatus.UPLOADED })
-    @Index()
     status: MediaStatus;
 
     @ApiProperty({ description: 'Public URL (if public)' })

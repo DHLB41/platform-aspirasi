@@ -4,13 +4,12 @@ import {
     OneToMany,
     ManyToOne,
     JoinColumn,
-    Index,
-    In
+    Index
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { BaseEntity } from '../../../common/entities/base.entity';
-import { User } from '../../../common/entities/user.entity';
+import { User } from '../../../auth/entities/user.entity';
 import { Volunteer } from '../../volunteers/entities/volunteer.entity';
 
 export enum WorkAreaType {
@@ -43,7 +42,6 @@ interface Boundary {
 export class WorkArea extends BaseEntity {
     @ApiProperty({ description: 'Work area name' })
     @Column({ length: 150 })
-    @Index()
     name: string;
 
     @ApiProperty({ description: 'Work area description' })
@@ -56,7 +54,6 @@ export class WorkArea extends BaseEntity {
 
     @ApiProperty({ enum: WorkAreaStatus, description: 'Work area status' })
     @Column({ type: 'enum', enum: WorkAreaStatus, default: WorkAreaStatus.ACTIVE })
-    @Index()
     status: WorkAreaStatus;
 
     @ApiProperty({ description: 'Area code (e.g., postal code, admin code)' })
@@ -73,7 +70,7 @@ export class WorkArea extends BaseEntity {
     coordinatorId?: string;
 
     @ApiProperty({ description: 'Center point coordinates' })
-    @Column({ type: 'jsonb', name: 'center_point' ,nullable: true })
+    @Column({ type: 'jsonb', name: 'center_point', nullable: true })
     @Transform(({ value }) => value || null)
     centerPoint?: Coordinates;
 
@@ -131,39 +128,43 @@ export class WorkArea extends BaseEntity {
         socialMedia?: Record<string, string>;
     };
 
-    // Relations
-    @ManyToOne(() => WorkArea, (workArea: WorkArea) => workArea.children, {
+    // Relations - FIXED: Proper bidirectional relations
+    @ManyToOne(() => WorkArea, (workArea) => workArea.children, {
         nullable: true,
         onDelete: 'SET NULL'
     })
     @JoinColumn({ name: 'parent_id' })
     parent?: WorkArea;
 
-    @OneToMany(() => WorkArea, (workArea: WorkArea) => workArea.parent)
-    children?: WorkArea[];
+    @OneToMany(() => WorkArea, (workArea) => workArea.parent)
+    children: WorkArea[];
 
     @ManyToOne(() => User, { nullable: true })
     @JoinColumn({ name: 'coordinator_id' })
     coordinator?: User;
 
-    @OneToMany(() => Volunteer, (volunteer: Volunteer) => volunteer.workArea)
-    volunteers?: Volunteer[];
-    static volunteers: any;
+    // Fixed: Proper relation to Volunteer
+    @OneToMany(() => Volunteer, (volunteer) => volunteer.workArea)
+    volunteers: Volunteer[];
 
     // Computed properties
     get volunteerCount(): number {
         return this.volunteers?.length || 0;
     }
 
+    get activeVolunteerCount(): number {
+        return this.volunteers?.filter(v => v.isActive).length || 0;
+    }
+
     get completionPercentage(): number {
         if (this.targetVolunteerCount === 0) {
           return 0;
         }
-        return Math.min(100, (this.volunteerCount / this.targetVolunteerCount) * 100);
+        return Math.min(100, (this.activeVolunteerCount / this.targetVolunteerCount) * 100);
     }
 
     get isAtCapacity(): boolean {
-        return this.volunteerCount >= this.targetVolunteerCount;
+        return this.activeVolunteerCount >= this.targetVolunteerCount;
     }
 
     get hierarchyLevel(): number {
@@ -193,6 +194,14 @@ export class WorkArea extends BaseEntity {
         return !!this.boundary;
     }
 
+    isRoot(): boolean {
+        return !this.parentId;
+    }
+
+    hasChildren(): boolean {
+        return this.children && this.children.length > 0;
+    }
+
     getFullHierarchyNames(): string {
         const names = [];
         let current: WorkArea | undefined = this;
@@ -203,10 +212,10 @@ export class WorkArea extends BaseEntity {
         return names.join(' → ');
     }
 
-    isChildOf(wordArea: WorkArea): boolean {
+    isChildOf(workArea: WorkArea): boolean {
         let current = this.parent;
         while (current) {
-            if (current.id === wordArea.id) {
+            if (current.id === workArea.id) {
               return true;
             }
             current = current.parent;
@@ -232,7 +241,48 @@ export class WorkArea extends BaseEntity {
 
     updateVolunteerStats(): void {
         if (this.volunteers) {
-            const activeVolunteers = this.volunteers.filter(v => v.isActive());
+            const activeVolunteers = this.volunteers.filter(v => v.isActive);
+            // Could update additional statistics here
         }
+    }
+
+    validateCoordinates(): boolean {
+        if (!this.centerPoint) {
+          return true;
+        }
+        
+        const { lat, lng } = this.centerPoint;
+        return (
+            lat >= -90 && lat <= 90 &&
+            lng >= -180 && lng <= 180
+        );
+    }
+
+    calculateDistance(other: WorkArea): number | null {
+        if (!this.centerPoint || !other.centerPoint) {
+            return null;
+        }
+
+        const R = 6371; // Earth's radius in kilometers
+        const lat1Rad = (this.centerPoint.lat * Math.PI) / 180;
+        const lat2Rad = (other.centerPoint.lat * Math.PI) / 180;
+        const deltaLatRad = ((other.centerPoint.lat - this.centerPoint.lat) * Math.PI) / 180;
+        const deltaLngRad = ((other.centerPoint.lng - this.centerPoint.lng) * Math.PI) / 180;
+
+        const a = 
+            Math.sin(deltaLatRad / 2) * Math.sin(deltaLatRad / 2) +
+            Math.cos(lat1Rad) * Math.cos(lat2Rad) *
+            Math.sin(deltaLngRad / 2) * Math.sin(deltaLngRad / 2);
+        
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        
+        return R * c;
+    }
+
+    getPopulationDensity(): number | null {
+        if (!this.population || !this.areaKm2) {
+            return null;
+        }
+        return this.population / this.areaKm2;
     }
 }

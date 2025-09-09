@@ -10,33 +10,19 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { BaseEntity } from '../../../common/entities/base.entity';
-import { User } from '../../../common/entities/user.entity';
+import { User } from '../../../auth/entities/user.entity';
 import { WorkArea } from '../../work-areas/entities/work-area.entity';
 import { FamilyMember } from './family-member.entity';
 import { Document } from './document.entity';
-
-export enum VolunteerStatus {
-    ACTIVE = 'active',
-    INACTIVE = 'inactive',
-    SUSPENDED = 'suspended',
-    RESIGNED = 'resigned',
-}
-
-export enum Gender {
-    MALE = 'male',
-    FEMALE = 'female',
-}
-
-export enum MaritalStatus {
-    SINGLE = 'single',
-    MARRIED = 'married',
-    DIVORCED = 'divorced',
-    WIDOWED = 'widowed',
-}
+import { 
+    Gender, 
+    VolunteerStatus, 
+    MaritalStatus 
+} from '../../../common/types/volunteer.types';
 
 @Entity('volunteers')
 @Index(['nik'], { unique: true })
-@Index(['user_id'], { unique: true })
+@Index(['userId'], { unique: true })
 export class Volunteer extends BaseEntity {
     @ApiProperty({ description: 'User ID reference' })
     @Column({ name: 'user_id' })
@@ -44,7 +30,6 @@ export class Volunteer extends BaseEntity {
 
     @ApiProperty({ description: 'NIK' })
     @Column({ length: 16, unique: true })
-    @Index()
     nik: string;
 
     @ApiProperty({ description: 'Birth date' })
@@ -122,7 +107,7 @@ export class Volunteer extends BaseEntity {
     skills?: string[];
 
     @ApiProperty({ description: 'Bio/description' })
-    @Column({ type: 'text', nullable: true})
+    @Column({ type: 'text', nullable: true })
     bio?: string;
 
     @ApiProperty({ description: 'Join date as volunteer' })
@@ -135,7 +120,6 @@ export class Volunteer extends BaseEntity {
         enum: VolunteerStatus,
         default: VolunteerStatus.ACTIVE
     })
-    @Index()
     status: VolunteerStatus;
 
     @ApiProperty({ description: 'Work area ID' })
@@ -151,7 +135,7 @@ export class Volunteer extends BaseEntity {
         type: 'decimal',
         precision: 5,
         scale: 2,
-        name: 'docume/nt_completion_percentage',
+        name: 'document_completion_percentage',
         default: 0.00
     })
     documentCompletionPercentage: number;
@@ -165,71 +149,96 @@ export class Volunteer extends BaseEntity {
     @JoinColumn({ name: 'user_id' })
     user: User;
 
-    @ManyToOne(() => WorkArea, (workArea: WorkArea) => WorkArea.volunteers, {
+    @ManyToOne(() => WorkArea, (workArea) => workArea.volunteers, {
         nullable: true,
         onDelete: 'SET NULL'
-     })
+    })
     @JoinColumn({ name: 'work_area_id' })
     workArea?: WorkArea;
 
-    @OneToMany(() => FamilyMember, (familyMember: FamilyMember) => familyMember.volunteer, {
-        cascade: true,
-        onDelete: 'CASCADE'
+    @OneToMany(() => FamilyMember, (familyMember) => familyMember.volunteer, {
+        cascade: true
     })
     familyMembers: FamilyMember[];
 
-    @OneToMany(() => Document, (document: Document) => document.volunteer, {
-        cascade: true,
-        onDelete: 'CASCADE'
+    @OneToMany(() => Document, (document) => document.volunteer, {
+        cascade: true
     })
     documents: Document[];
 
-    // Computed property
+    // Computed properties
     get age(): number {
-        if (!this.birthDate) {
-          return 0;
-        }
+        if (!this.birthDate) return 0;
         const today = new Date();
         const birth = new Date(this.birthDate);
         let age = today.getFullYear() - birth.getFullYear();
         const monthDiff = today.getMonth() - birth.getMonth();
-
+        
         if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
             age--;
         }
-
+        
         return age;
     }
 
-    get fullAddress(): string {
-        const parts = [
-            this.address,
-            this.rt && this.rw ? `RT ${this.rt}/RW ${this.rw}` : null,
-            this.village,
-            this.district,
-            this.city,
-            this.province,
-            this.postalCode
-        ].filter(Boolean);
-
-        return parts.join(', ');
+    get fullName(): string {
+        return this.user?.name || '';
     }
 
-    // Helper methods
-    isActive(): boolean {
+    get email(): string {
+        return this.user?.email || '';
+    }
+
+    get phone(): string {
+        return this.user?.phone || '';
+    }
+
+    get isActive(): boolean {
         return this.status === VolunteerStatus.ACTIVE;
     }
 
-    hasCompletedProfile(): boolean {
+    get isAdult(): boolean {
+        return this.age >= 17;
+    }
+
+    get hasCompleteProfile(): boolean {
         return !!(
             this.nik &&
             this.birthDate &&
             this.birthPlace &&
-            this.gender &&
             this.address &&
             this.emergencyContactName &&
             this.emergencyContactPhone
         );
+    }
+
+    get hasRequiredDocuments(): boolean {
+        const requiredTypes = ['ktp', 'photo'];
+        const approvedDocs = this.documents?.filter(doc => doc.isApproved()) || [];
+        
+        return requiredTypes.every(type => 
+            approvedDocs.some(doc => doc.documentType === type)
+        );
+    }
+
+    // Helper methods
+    isEligibleForActivation(): boolean {
+        return this.hasCompleteProfile && this.hasRequiredDocuments;
+    }
+
+    activate(): void {
+        if (this.isEligibleForActivation()) {
+            this.status = VolunteerStatus.ACTIVE;
+            this.lastActivityAt = new Date();
+        }
+    }
+
+    suspend(reason?: string): void {
+        this.status = VolunteerStatus.SUSPENDED;
+    }
+
+    resign(): void {
+        this.status = VolunteerStatus.RESIGNED;
     }
 
     updateDocumentCompletion(): void {
@@ -238,16 +247,57 @@ export class Volunteer extends BaseEntity {
             return;
         }
 
-        const requiredDocs = ['ktp', 'kk', 'photo'];
-        const uploadedDocs = this.documents
-            .filter(doc => doc.isApproved() && requiredDocs.includes(doc.documentType))
-            .map(doc => doc.documentType);
-
-        const completion = (uploadedDocs.length / requiredDocs.length) * 100;
-        this.documentCompletionPercentage = Math.round(completion * 100) / 100;
+        const approvedCount = this.documents.filter(doc => doc.isApproved()).length;
+        this.documentCompletionPercentage = (approvedCount / this.documents.length) * 100;
     }
 
     updateLastActivity(): void {
         this.lastActivityAt = new Date();
+    }
+
+    getWorkAreaName(): string {
+        return this.workArea?.name || 'Tidak ada area kerja';
+    }
+
+    getFamilyMemberCount(): number {
+        return this.familyMembers?.length || 0;
+    }
+
+    getDocumentCount(): number {
+        return this.documents?.length || 0;
+    }
+
+    getApprovedDocumentCount(): number {
+        return this.documents?.filter(doc => doc.isApproved()).length || 0;
+    }
+
+    validateProfile(): string[] {
+        const errors: string[] = [];
+
+        if (!this.nik || this.nik.length !== 16) {
+            errors.push('NIK harus 16 digit');
+        }
+
+        if (!this.birthDate) {
+            errors.push('Tanggal lahir harus diisi');
+        }
+
+        if (!this.birthPlace || this.birthPlace.trim().length < 2) {
+            errors.push('Tempat lahir harus diisi');
+        }
+
+        if (!this.address || this.address.trim().length < 10) {
+            errors.push('Alamat lengkap harus diisi minimal 10 karakter');
+        }
+
+        if (this.emergencyContactPhone && !/^\+62[0-9]{8,12}$/.test(this.emergencyContactPhone)) {
+            errors.push('Format nomor kontak darurat tidak valid (+62...)');
+        }
+
+        if (this.age < 17) {
+            errors.push('Usia minimum relawan adalah 17 tahun');
+        }
+
+        return errors;
     }
 }

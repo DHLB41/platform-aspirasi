@@ -1,32 +1,48 @@
+import { IsEmail, IsString, IsPhoneNumber, MinLength, MaxLength, Matches, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional } from 'class-validator';
 
 export class RegisterDto {
-    @ApiProperty({ description: 'Email address', example: 'user@example.com' })
-    @IsEmail({}, { message: 'Please provide a valid email address' })
-    email: string;
+  @ApiProperty({ description: 'Full name', example: 'John Doe' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name: string;
 
-    @ApiProperty({ description: 'Password', minLength: 8, example: 'SecurePassword123!' })
-    @IsString()
-    @MinLength(8, { message: 'Password must be at least 8 characters long' })
-    @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
-        message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
-    })
-    password: string;
+  @ApiProperty({ description: 'Email address', example: 'user@example.com' })
+  @IsEmail()
+  email: string;
 
-    @ApiProperty({ description: 'Password confirmation', example: 'SecurePassword123!' })
-    @IsString()
-    passwordConfirmation: string;
+  @ApiProperty({ 
+    description: 'Password (min 8 chars, must include uppercase, lowercase, number, special char)',
+    example: 'Password123!@#'
+  })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  @Matches(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/,
+    {
+      message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+    },
+  )
+  password: string;
 
-    @ApiProperty({ description: 'Full name', example: 'John Doe' })
-    @IsString()
-    @MinLength(2, { message: 'Name must be at least 2 characters long' })
-    @MaxLength(100, { message: 'Name cannot exceed 100 characters' })
-    name: string;
+  @ApiProperty({ 
+    description: 'Password confirmation',
+    example: 'Password123!@#'
+  })
+  @IsString()
+  passwordConfirmation: string;
 
-    @ApiProperty({ description: 'Phone number', required: false, example: '+6281234567890' })
-    @IsOptional()
-    @IsString()
-    @Matches(/^\+62[1-9]\d{7,11}$/, { message: 'Please provide a valid Indonesian phone number (+62...)' })
-    phone?: string;
+  @ApiProperty({ 
+    description: 'Phone number (Indonesian format)', 
+    example: '+6281234567890',
+    required: false 
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\+62[0-9]{8,12}$/, {
+    message: 'Phone number must be in Indonesian format (+62xxxxxxxxxx)',
+  })
+  phone?: string;
 }
