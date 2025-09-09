@@ -14,6 +14,7 @@ import * as crypto from 'crypto';
 
 import { User, UserRole } from './entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { UserResponse } from '@/types/auth.types';
 
 export interface RegisterRequest {
     email: string;
@@ -44,7 +45,7 @@ export interface AuthResponse {
 export class AuthService {
     constructor(
         @InjectRepository(User)
-        private  userRepository: Repository<User>,
+        private readonly userRepository: Repository<User>,
         @InjectRepository(RefreshToken)
         private readonly refreshTokenRepository: Repository<RefreshToken>,
         private readonly jwtService: JwtService,
@@ -74,7 +75,7 @@ export class AuthService {
         }
 
         // Hash password
-        const bcryptRounds = this.configService.get('BCRYPT_ROUNDS') || 12;
+        const bcryptRounds = parseInt(this.configService.get('BCRYPT_ROUNDS')) || 12;
         const passwordHash = await bcrypt.hash(password, bcryptRounds);
 
         // Create user
@@ -93,37 +94,34 @@ export class AuthService {
 
         return {
             tokens,
-            user: this.sanitizeUser(savedUser),
+            user: this.sanitizeUser(savedUser) as Partial<User>,
         };
     }
 
     async login(loginData: LoginRequest, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
         const { email, password } = loginData;
 
-        // Find user with password hash
+        // Find user by email
         const user = await this.userRepository.findOne({
             where: { email },
-            select: ['id', 'email', 'passwordHash', 'name', 'phone', 'roles', 'status', 'emailVerifiedAt'],
         });
 
         if (!user) {
-            throw new UnauthorizedException('Invalid email or password');
-        }
-
-        // Verify password
-        if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
-            throw new UnauthorizedException('Invalid email or password');
+            throw new UnauthorizedException('Invalid credentials');
         }
 
         // Check if user is active
         if (!user.isActive()) {
-            throw new UnauthorizedException('User account is not active');
+            throw new UnauthorizedException('Account is suspended or inactive');
+        }
+
+        // Verify password
+        if (!user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+            throw new UnauthorizedException('Invalid credentials');
         }
 
         // Update last login
-        await this.userRepository.update(user.id, {
-            lastLoginAt: new Date()
-        });
+        await this.userRepository.update(user.id, { lastLoginAt: new Date() });
 
         // Generate tokens
         const tokens = await this.generateTokens(user, ipAddress, userAgent);
@@ -134,68 +132,61 @@ export class AuthService {
         };
     }
 
-    async refreshTokens(refreshToken: string, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
-        // Hash the provided refresh token
-        const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-
-        // Find the refresh token
-        const tokenRecord = await this.refreshTokenRepository.findOne({
-            where: { tokenHash },
+    async refreshToken(refreshTokenValue: string, ipAddress?: string, userAgent?: string): Promise<AuthTokens> {
+        const hashedToken = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
+        
+        const refreshToken = await this.refreshTokenRepository.findOne({
+            where: { tokenHash: hashedToken },
             relations: ['user'],
         });
 
-        if (!tokenRecord || !tokenRecord.isValid()) {
-            throw new UnauthorizedException('Invalid refresh token');
+        if (!refreshToken || !refreshToken.isValid()) {
+            throw new UnauthorizedException('Invalid or expired refresh token');
         }
 
-        // Check if the token is still active
-        if (!tokenRecord.user.isActive()) {
-            throw new UnauthorizedException('Refresh token is inactive');
+        // Check if user is still active
+        if (!refreshToken.user.isActive()) {
+            throw new UnauthorizedException('Account is suspended or inactive');
         }
 
-        // Revoke the old refresh token
-        tokenRecord.revoke();
-        await this.refreshTokenRepository.save(tokenRecord);
+        // Revoke old token
+        refreshToken.revoke();
+        await this.refreshTokenRepository.save(refreshToken);
 
         // Generate new tokens
-        const tokens = await this.generateTokens(tokenRecord.user, ipAddress, userAgent);
-        
-        return {
-            tokens,
-            user: this.sanitizeUser(tokenRecord.user),
-        };
+        return this.generateTokens(refreshToken.user, ipAddress, userAgent);
     }
 
-    async logout(userId: string, refreshToken?: string): Promise<void> {
-        if (refreshToken) {
-            const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-            const tokenRecord = await this.refreshTokenRepository.findOne({
-                where: { userId, tokenHash },
-            });
+    async logout(refreshTokenValue: string): Promise<void> {
+        const hashedToken = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
+        
+        const refreshToken = await this.refreshTokenRepository.findOne({
+            where: { tokenHash: hashedToken },
+        });
 
-            if (tokenRecord) {
-                tokenRecord.revoke();
-                await this.refreshTokenRepository.save(tokenRecord);
-            }
-        } else {
-            // Revoke all tokens for the user
-            await this.refreshTokenRepository.update(
-                { userId, revokedAt: null },
-                { revokedAt: new Date() }
-            );
+        if (refreshToken) {
+            refreshToken.revoke();
+            await this.refreshTokenRepository.save(refreshToken);
         }
     }
 
-    async validateUserById(userId: string): Promise<User | null> {
-        return this.userRepository.findOne({
-            where: { id: userId },
-        });
+    async logoutAll(userId: string): Promise<void> {
+        await this.refreshTokenRepository.update(
+            { userId, revokedAt: null },
+            { revokedAt: new Date() }
+        );
     }
 
-    async validateUserByEmail(email: string): Promise<User | null> {
-        return this.userRepository.findOne({
-            where: { email },
+    async validateUser(userId: string): Promise<User | null> {
+        const user = await this.userRepository.findOne({
+            where: { id: userId },
         });
+
+        if (!user || !user.isActive()) {
+            return null;
+        }
+
+        return user;
     }
 
     private async generateTokens(user: User, ipAddress?: string, userAgent?: string): Promise<AuthTokens> {
@@ -206,49 +197,44 @@ export class AuthService {
         };
 
         // Generate access token
-        const accessToken = this.jwtService.sign(payload, {
-            expiresIn: this.configService.get('JWT_EXPIRES_IN') || '15m',
-        });
+        const accessToken = this.jwtService.sign(payload);
 
         // Generate refresh token
-        const refreshTokenValue = crypto.randomBytes(40).toString('hex');
+        const refreshTokenValue = crypto.randomBytes(32).toString('hex');
         const refreshTokenHash = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
 
         // Save refresh token to database
-        const refreshTokenExpiry = new Date();
-        refreshTokenExpiry.setTime(refreshTokenExpiry.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days
-
-        const refreshTokenEntity = this.refreshTokenRepository.create({
+        const refreshToken = this.refreshTokenRepository.create({
             userId: user.id,
             tokenHash: refreshTokenHash,
-            expiresAt: refreshTokenExpiry,
-            ipAddress,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
             userAgent,
+            ipAddress,
         });
 
-        await this.refreshTokenRepository.save(refreshTokenEntity);
+        await this.refreshTokenRepository.save(refreshToken);
 
         return {
             accessToken,
             refreshToken: refreshTokenValue,
             tokenType: 'Bearer',
-            expiresIn: 15 * 60, // 15 minutes
+            expiresIn: 15 * 60, // 15 minutes in seconds
         };
     }
 
     private sanitizeUser(user: User): Partial<User> {
-        const { passwordHash, ...sanitizedUser } = user;
-        return sanitizedUser;
-    }
-
-    // Method for JWT strategy validation
-    async validateJwtPayload(payload: any): Promise<User | null> {
-        const user = await this.validateUserById(payload.sub);
-
-        if (user || user.isActive()) {
-            return null;
-        }
-
-        return user;
+        return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            phone: user.phone,
+            roles: user.roles,
+            status: user.status,
+            emailVerifiedAt: user.emailVerifiedAt,
+            phoneVerifiedAt: user.phoneVerifiedAt,
+            lastLoginAt: user.lastLoginAt,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
+        };
     }
 }

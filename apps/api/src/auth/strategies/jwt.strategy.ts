@@ -1,22 +1,16 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
-import { ConfigService } from '@nestjs/config';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth.service';
-
-export interface JwtPayload {
-    sub: string; // User ID
-    email: string;
-    roles: string[];
-    iat?: number; // Issued at
-    exp?: number; // Expiration time
-}
+import { User } from '../entities/user.entity';
+import { JwtPayload } from '/Users/macbook/platform-aspirasi/apps/api/src/types/auth.types';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
     constructor(
-        private configService: ConfigService,
-        private authService: AuthService,
+        private readonly configService: ConfigService,
+        private readonly authService: AuthService,
     ) {
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -25,17 +19,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         });
     }
 
-    async validate(payload: JwtPayload) {
-        const user = await this.authService.validateJwtPayload(payload);
-
+    async validate(payload: JwtPayload): Promise<User> {
+        const user = await this.authService.validateUser(payload.sub);
+        
         if (!user) {
-            throw new UnauthorizedException('Invalid token');
+            throw new UnauthorizedException('User not found or inactive');
         }
-        return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            roles: user.roles,
-        };
+
+        return user;
     }
 }

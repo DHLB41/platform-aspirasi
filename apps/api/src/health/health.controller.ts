@@ -1,29 +1,26 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { HealthService } from './health.service';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
-  @Get()
-  getHealth() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development',
-      version: '1.0.0',
-    };
-  }
+    constructor(private readonly healthService: HealthService) {}
 
-  @Get('ready')
-  getReadiness() {
-    return {
-      status: 'ready',
-      timestamp: new Date().toISOString(),
-      checks: {
-        database: 'connected',
-        redis: 'connected',
-      },
-    };
-  }
+    @Get()
+    @Public()
+    @ApiOperation({ summary: 'Health check endpoint' })
+    @ApiResponse({ status: 200, description: 'Service is healthy' })
+    async check() {
+        return this.healthService.getHealth();
+    }
+
+    @Get('detailed')
+    @Public()
+    @ApiOperation({ summary: 'Detailed health check with database status' })
+    @ApiResponse({ status: 200, description: 'Detailed health information' })
+    async detailedCheck() {
+        return this.healthService.getDetailedHealth();
+    }
 }

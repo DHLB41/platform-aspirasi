@@ -1,0 +1,1 @@
+export * from './entities/media-asset.entity';

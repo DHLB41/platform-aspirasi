@@ -1,42 +1,43 @@
-import { config } from 'dotenv';
 import { DataSource } from 'typeorm';
-import { UserSeeder } from './user.seeder';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+import { seedUsers } from './01-users.seed';
 
 // Load environment variables
-config();
-
-const AppDataSource = new DataSource({
-    type: 'postgres',
-    host: process.env.DATABASE_HOST || 'localhost',
-    port: parseInt(process.env.DATABASE_PORT, 10) || 5432,
-    username: process.env.DATABASE_USER || 'platform_user',
-    password: process.env.DATABASE_PASSWORD || 'dev_password_2024',
-    database: process.env.DATABASE_NAME || 'platform_dev',
-    entities: [__dirname + '/../../**/*.entity{.ts,.js}'],
-    synchronize: false,
-    logging: false,
-});
+config({ path: resolve(__dirname, '../../../.env') });
 
 async function runSeeds() {
+    const dataSource = new DataSource({
+        type: 'postgres',
+        host: process.env.DATABASE_HOST || 'localhost',
+        port: parseInt(process.env.DATABASE_PORT) || 5432,
+        username: process.env.DATABASE_USERNAME || 'platform_user',
+        password: process.env.DATABASE_PASSWORD || 'dev_password_2024',
+        database: process.env.DATABASE_NAME || 'platform_dev',
+        entities: [__dirname + '/../../**/*.entity{.ts,.js}'],
+        synchronize: false,
+        logging: false,
+    });
+
     try {
-        console.log('Initializing database connection...');
-        await AppDataSource.initialize();
-        console.log('Database connection established');
+        await dataSource.initialize();
+        console.log('🔗 Database connected for seeding');
 
-        console.log('Running database seeds...');
+        // Run seeds in order
+        await seedUsers(dataSource);
 
-        // Run user seeder
-        const userSeeder = new UserSeeder(AppDataSource);
-        await userSeeder.run();
-
-        console.log('Database seeding completed successfully!');
+        console.log('🌱 All seeds completed successfully!');
     } catch (error) {
-        console.error('Error during seeding:', error);
+        console.error('❌ Error running seeds:', error);
+        process.exit(1);
     } finally {
-        if (AppDataSource.isInitialized) {
-            await AppDataSource.destroy();
-        }
+        await dataSource.destroy();
+        console.log('🔌 Database connection closed');
+        process.exit(0);
     }
 }
 
-runSeeds();
+// Run if called directly
+if (require.main === module) {
+    runSeeds();
+}

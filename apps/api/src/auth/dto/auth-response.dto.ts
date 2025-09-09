@@ -1,68 +1,92 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { User } from '../entities/user.entity';
+import { UserRole, UserStatus } from '../entities/user.entity';
 
 export class AuthTokenDto {
-    @ApiProperty({
-        description: 'JWT access token',
-        example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-    })
+    @ApiProperty({ description: 'Access token' })
     accessToken: string;
 
-    @ApiProperty({
-        description: 'JWT refresh token',
-        example: 'a1b2c3d4e5f6...'
-    })
+    @ApiProperty({ description: 'Refresh token' })
     refreshToken: string;
 
-    @ApiProperty({
-        description: 'Token type',
-        example: 'Bearer',
-        default: 'Bearer'
-    })
-    tokenType: string = 'Bearer';
+    @ApiProperty({ description: 'Token type', example: 'Bearer' })
+    tokenType: string;
 
-    @ApiProperty({
-        description: 'Access token expiration time in seconds',
-        example: 900
-    })
+    @ApiProperty({ description: 'Token expiration in seconds', example: 900 })
     expiresIn: number;
 }
 
+export class UserDto {
+    @ApiProperty({ description: 'User ID' })
+    id: string;
+
+    @ApiProperty({ description: 'Email address' })
+    email: string;
+
+    @ApiProperty({ description: 'Full name' })
+    name: string;
+
+    @ApiProperty({ description: 'Phone number', required: false })
+    phone?: string;
+
+    @ApiProperty({ enum: UserRole, isArray: true, description: 'User roles' })
+    roles: UserRole[];
+
+    @ApiProperty({ description: 'Account status' })
+    status: string;
+
+    @ApiProperty({ description: 'Email verification status', required: false })
+    emailVerifiedAt?: Date;
+
+    @ApiProperty({ description: 'Phone verification status', required: false })
+    phoneVerifiedAt?: Date;
+
+    @ApiProperty({ description: 'Last login timestamp', required: false })
+    lastLoginAt?: Date;
+
+    @ApiProperty({ description: 'Creation timestamp' })
+    createdAt: Date;
+
+    @ApiProperty({ description: 'Last update timestamp' })
+    updatedAt: Date;
+}
+
 export class AuthResponseDto {
-    @ApiProperty({
-        description: 'Authentication tokens',
-        type: AuthTokenDto
-    })
+    @ApiProperty({ type: AuthTokenDto, description: 'Authentication tokens' })
     tokens: AuthTokenDto;
 
-    @ApiProperty({
-        description: 'User information',
-        type: () => User
-    })
-    user: Partial<User>;
+    @ApiProperty({ type: UserDto, description: 'User information' })
+    user: UserDto;
 }
 
 export class ResponseDto<T = any> {
-    @ApiProperty()
+    @ApiProperty({ description: 'Success status' })
     success: boolean;
 
-    @ApiProperty()
+    @ApiProperty({ description: 'Response message' })
     message: string;
 
-    @ApiProperty()
+    @ApiProperty({ description: 'Response data', required: false })
     data?: T;
 
-    constructor(success: boolean, message: string, data?: T) {
+    @ApiProperty({ description: 'Error details', required: false })
+    error?: any;
+
+    @ApiProperty({ description: 'Timestamp' })
+    timestamp: string;
+
+    constructor(success: boolean, message: string, data?: T, error?: any) {
         this.success = success;
         this.message = message;
         this.data = data;
+        this.error = error;
+        this.timestamp = new Date().toISOString();
     }
 
     static success<T>(message: string, data?: T): ResponseDto<T> {
-        return new ResponseDto<T>(true, message, data);
+        return new ResponseDto(true, message, data);
     }
 
-    static error(message: string, data?: any): ResponseDto {
-        return new ResponseDto(false, message, data);
+    static error(message: string, error?: any): ResponseDto {
+        return new ResponseDto(false, message, undefined, error);
     }
 }

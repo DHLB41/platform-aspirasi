@@ -43,8 +43,8 @@ export class User extends BaseEntity {
     description: 'User roles',
     default: [UserRole.VOLUNTEER]
   })
-  @Column('text', { default: UserRole.VOLUNTEER })
-  roles: string;
+  @Column('simple-array', { default: UserRole.VOLUNTEER })
+  roles: UserRole[];
 
   @ApiProperty({ enum: UserStatus, description: 'Account status' })
   @Column({ 
@@ -72,8 +72,7 @@ export class User extends BaseEntity {
 
   // Helper methods
   hasRole(role: UserRole): boolean {
-    const rolesArray = this.roles.split(',');
-    return rolesArray.includes(role);
+    return this.roles.includes(role);
   }
 
   isActive(): boolean {
@@ -85,14 +84,12 @@ export class User extends BaseEntity {
   }
 
   addRole(role: UserRole): void {
-    const rolesArray = this.roles.split(',');
-    if (!rolesArray.includes(role)) {
-      this.roles = [...rolesArray, role].join(',');
+    if (!this.roles.includes(role)) {
+      this.roles.push(role);
     }
   }
 
   removeRole(role: UserRole): void {
-    const rolesArray = this.roles.split(',');
-    this.roles = rolesArray.filter(r => r !== role).join(',');
+    this.roles = this.roles.filter(r => r !== role);
   }
 }
