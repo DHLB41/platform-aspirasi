@@ -106,7 +106,7 @@ export class WorkArea extends BaseEntity {
     targetVolunteerCount: number;
 
     @ApiProperty({ description: 'Priority level (1-5, 5 being highest)' })
-    @Column({ type: 'integer', default: 3 })
+    @Column({ type: 'integer', name: 'priority_level', default: 3 })  // FIXED: Added name mapping
     priorityLevel: number;
 
     @ApiProperty({ description: 'Additional metadata' })
@@ -128,7 +128,7 @@ export class WorkArea extends BaseEntity {
         socialMedia?: Record<string, string>;
     };
 
-    // Relations - FIXED: Proper bidirectional relations
+    // Relations
     @ManyToOne(() => WorkArea, (workArea) => workArea.children, {
         nullable: true,
         onDelete: 'SET NULL'
@@ -143,7 +143,7 @@ export class WorkArea extends BaseEntity {
     @JoinColumn({ name: 'coordinator_id' })
     coordinator?: User;
 
-    // Fixed: Proper relation to Volunteer
+    // TODO: Add this relation when Volunteer entity is ready
     @OneToMany(() => Volunteer, (volunteer) => volunteer.workArea)
     volunteers: Volunteer[];
 
@@ -240,9 +240,9 @@ export class WorkArea extends BaseEntity {
     }
 
     updateVolunteerStats(): void {
+        // TODO: Implement when volunteer relation is ready
         if (this.volunteers) {
-            const activeVolunteers = this.volunteers.filter(v => v.isActive);
-            // Could update additional statistics here
+        const activeVolunteers = this.volunteers.filter(v => v.isActive);
         }
     }
 
