@@ -144,6 +144,12 @@ export class Volunteer extends BaseEntity {
     @Column({ name: 'last_activity_at', type: 'timestamp', nullable: true })
     lastActivityAt?: Date;
 
+    // FIXED: Add proper metadata column with TypeORM decorators
+    @ApiProperty({ description: 'Additional metadata' })
+    @Column({ type: 'jsonb', nullable: true })
+    @Transform(({ value }) => value || {})
+    metadata?: Record<string, any>;
+
     // Relations
     @OneToOne(() => User, { eager: true })
     @JoinColumn({ name: 'user_id' })
@@ -168,7 +174,9 @@ export class Volunteer extends BaseEntity {
 
     // Computed properties
     get age(): number {
-        if (!this.birthDate) return 0;
+        if (!this.birthDate) {
+          return 0;
+        }
         const today = new Date();
         const birth = new Date(this.birthDate);
         let age = today.getFullYear() - birth.getFullYear();
@@ -235,10 +243,22 @@ export class Volunteer extends BaseEntity {
 
     suspend(reason?: string): void {
         this.status = VolunteerStatus.SUSPENDED;
+        // FIXED: Now properly using metadata property
+        if (reason) {
+            this.metadata = {
+                ...this.metadata,
+                suspensionReason: reason,
+                suspendedAt: new Date().toISOString()
+            };
+        }
     }
 
     resign(): void {
         this.status = VolunteerStatus.RESIGNED;
+        this.metadata = {
+            ...this.metadata,
+            resignedAt: new Date().toISOString()
+        };
     }
 
     updateDocumentCompletion(): void {
